@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "Flash & Debug (ST-Link)",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/Debug/stm32fanfailurecard.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "stlink",
+            "serverpath": "C:\\ST\\STM32CubeIDE_2.1.1\\STM32CubeIDE\\plugins\\com.st.stm32cube.ide.mcu.externaltools.stlink-gdb-server.win32_2.2.400.202601091506\\tools\\bin\\ST-LINK_gdbserver.exe",
+            "stm32cubeprogrammer": "C:\\ST\\STM32CubeIDE_2.1.1\\STM32CubeIDE\\plugins\\com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.400.202601091506\\tools\\bin",
+            "gdbPath": "C:\\Users\\fukud\\AppData\\Local\\stm32cube\\bundles\\gnu-tools-for-stm32\\14.3.1+st.2\\bin\\arm-none-eabi-gdb.exe",
+            "device": "STM32F411CE",
+            "svdFile": "C:\\ST\\STM32CubeIDE_2.1.1\\STM32CubeIDE\\plugins\\com.st.stm32cube.ide.mcu.productdb.debug_2.2.400.202601091600\\resources\\cmsis\\STMicroelectronics_CMSIS_SVD\\STM32F411.svd",
+            "interface": "swd",
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "raw"
+        }
+    ]
+}
