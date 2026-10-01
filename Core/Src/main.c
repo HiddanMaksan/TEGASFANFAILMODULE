@@ -389,113 +389,94 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 
+		  uint8_t config[2];
+		     uint8_t rx[2];
 
+		     config[1] = 0x83;   /* 128 SPS, comparator off */
 
- uint8_t config[2];
-    uint8_t rx[2];
+		     /* ---- AIN0 ---- */
+		     config[0] = 0xC3;
+		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(20);
+		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw0 = (int16_t)((rx[0] << 8) | rx[1]);
 
-    config[1] = 0x83;   /* 128 SPS, comparator off */
+		     /* ---- AIN1 ---- */
+		     config[0] = 0xD3;
+		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(20);
+		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw1 = (int16_t)((rx[0] << 8) | rx[1]);
 
-    /* ---- AIN0 ---- */
-    config[0] = 0xC3;
-    HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
-    HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw0 = (int16_t)((rx[0] << 8) | rx[1]);
+		     /* ---- AIN2 ---- */
+		     config[0] = 0xE3;
+		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(20);
+		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw2 = (int16_t)((rx[0] << 8) | rx[1]);
 
-    /* ---- AIN1 ---- */
-    config[0] = 0xD3;
-    HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
-    HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw1 = (int16_t)((rx[0] << 8) | rx[1]);
-
-    /* ---- AIN2 ---- */
-    config[0] = 0xE3;
-    HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
-    HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw2 = (int16_t)((rx[0] << 8) | rx[1]);
-
-    /* ---- AIN3 ---- */
-    config[0] = 0xF3;
-    HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
-    HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw3 = (int16_t)((rx[0] << 8) | rx[1]);
-
-
-
-    /* ---- AIN0 ---- */
-    config[0] = 0xC3;
-    HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
-    HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw4 = (int16_t)((rx[0] << 8) | rx[1]);
-
-    /* ---- AIN1 ---- */
-    config[0] = 0xD3;
-    HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
-    HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw5 = (int16_t)((rx[0] << 8) | rx[1]);
-
-    /* ---- AIN2 ---- */
-    config[0] = 0xE3;
-    HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
-    HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw6 = (int16_t)((rx[0] << 8) | rx[1]);
-
-    /* ---- AIN3 ---- */
-    config[0] = 0xF3;
-    HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(10);
-    HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-    g_raw7 = (int16_t)((rx[0] << 8) | rx[1]);
-
-
-    /* ---- Voltage and temperature ---- */
-    g_v[0] = raw_to_volts(g_raw0);
-    g_v[1] = raw_to_volts(g_raw1);
-    g_v[2] = raw_to_volts(g_raw2);
-    g_v[3] = raw_to_volts(g_raw3);
-
-
-    /* ---- Voltage and temperature ---- */
-     g_v[4] = raw_to_volts(g_raw4);
-     g_v[5] = raw_to_volts(g_raw5);
-     g_v[6] = raw_to_volts(g_raw6);
-     g_v[7] = raw_to_volts(g_raw7);
-
-     g_temp[0] = volts_to_celsius(g_v[0]);
-     g_temp[1] = volts_to_celsius(g_v[1]);
-     g_temp[2] = volts_to_celsius(g_v[2]);
-     g_temp[3] = volts_to_celsius(g_v[3]);
+		     /* ---- AIN3 ---- */
+		     config[0] = 0xF3;
+		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(20);
+		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw3 = (int16_t)((rx[0] << 8) | rx[1]);
 
 
 
-    g_temp[4] = volts_to_celsius(g_v[4]);
-    g_temp[5] = volts_to_celsius(g_v[5]);
-    g_temp[6] = volts_to_celsius(g_v[6]);
-    g_temp[7] = volts_to_celsius(g_v[7]);
+		     /* ---- AIN0 ---- */
+		     config[0] = 0xC3;
+		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(20);
+		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw4 = (int16_t)((rx[0] << 8) | rx[1]);
+
+		     /* ---- AIN1 ---- */
+		     config[0] = 0xD3;
+		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(20);
+		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw5 = (int16_t)((rx[0] << 8) | rx[1]);
+
+		     /* ---- AIN2 ---- */
+		     config[0] = 0xE3;
+		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(20);
+		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw6 = (int16_t)((rx[0] << 8) | rx[1]);
+
+		     /* ---- AIN3 ---- */
+		     config[0] = 0xF3;
+		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+		     HAL_Delay(10);
+		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+		     g_raw7 = (int16_t)((rx[0] << 8) | rx[1]);
+
+
+		     /* ---- Voltage and temperature ---- */
+		     g_v[0] = raw_to_volts(g_raw0);
+		     g_v[1] = raw_to_volts(g_raw1);
+		     g_v[2] = raw_to_volts(g_raw2);
+		     g_v[3] = raw_to_volts(g_raw3);
+
+
+		     /* ---- Voltage and temperature ---- */
+		      g_v[4] = raw_to_volts(g_raw4);
+		      g_v[5] = raw_to_volts(g_raw5);
+		      g_v[6] = raw_to_volts(g_raw6);
+		      g_v[7] = raw_to_volts(g_raw7);
+
+		      g_temp[0] = volts_to_celsius(g_v[0]);
+		      g_temp[1] = volts_to_celsius(g_v[1]);
+		      g_temp[2] = volts_to_celsius(g_v[2]);
+		      g_temp[3] = volts_to_celsius(g_v[3]);
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+		     g_temp[4] = volts_to_celsius(g_v[4]);
+		     g_temp[5] = volts_to_celsius(g_v[5]);
+		     g_temp[6] = volts_to_celsius(g_v[6]);
+		     g_temp[7] = volts_to_celsius(g_v[7]);
 
 
 
