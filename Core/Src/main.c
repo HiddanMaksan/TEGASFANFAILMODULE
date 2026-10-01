@@ -9,6 +9,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -76,8 +77,18 @@ TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 /* USER CODE BEGIN PV */
-
+osMutexId_t i2c1Mutex;
+osMutexId_t i2c2Mutex;
+const osMutexAttr_t i2c1Mutex_attr = { .name = "i2c1Mutex" };
+const osMutexAttr_t i2c2Mutex_attr = { .name = "i2c2Mutex" };
 /* ---- NTC / ADS1115 ---- */
 volatile int16_t ntc1raw = 0;
 volatile int16_t ntc2raw = 0;
@@ -154,6 +165,8 @@ static void MX_SPI4_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM1_Init(void);
+void StartDefaultTask(void *argument);
+
 /* USER CODE BEGIN PFP */
 /* USER CODE END PFP */
 
@@ -182,6 +195,83 @@ static float volts_to_celsius(float v)
 /* ======================================================================== */
 /*  SCANNER                                                                 */
 /* ======================================================================== */
+
+static void ads_read(I2C_HandleTypeDef *h, osMutexId_t mtx,
+                     uint8_t addr7, uint8_t ch, volatile int16_t *dst)
+{
+    uint8_t config[2];
+    uint8_t rx[2];
+
+    config[0] = 0xC3 + (ch << 4);   /* ch0=C3, ch1=D3, ch2=E3, ch3=F3 */
+    config[1] = 0x83;               /* 128 SPS, comparator off */
+
+    osMutexAcquire(mtx, osWaitForever);      /* take the key */
+    HAL_I2C_Mem_Write(h, (addr7 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
+    osMutexRelease(mtx);                     /* give it back */
+
+    osDelay(20);                             /* wait for conversion, other tasks can run */
+
+    osMutexAcquire(mtx, osWaitForever);
+    HAL_I2C_Mem_Read(h, (addr7 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
+    osMutexRelease(mtx);
+
+    *dst = (int16_t)((rx[0] << 8) | rx[1]);
+}
+
+
+void ReadAllSensors(void)
+{
+    /* ---- NTC on hi2c2, ADS 0x4A ---- */
+    ads_read(&hi2c2, i2c2Mutex, 0x4A, 0, &ntc4raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x4A, 1, &ntc3raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x4A, 2, &ntc2raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x4A, 3, &ntc1raw);
+
+    /* ---- NTC on hi2c1, ADS 0x48 ---- */
+    ads_read(&hi2c1, i2c1Mutex, 0x48, 0, &ntc8raw);
+    ads_read(&hi2c1, i2c1Mutex, 0x48, 1, &ntc7raw);
+    ads_read(&hi2c1, i2c1Mutex, 0x48, 2, &ntc6raw);
+    ads_read(&hi2c1, i2c1Mutex, 0x48, 3, &ntc5raw);
+
+    /* ---- Fans on hi2c2, ADS 0x48 ---- */
+    ads_read(&hi2c2, i2c2Mutex, 0x48, 0, &fan1raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x48, 1, &fan2raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x48, 2, &fan3raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x48, 3, &fan4raw);
+
+    /* ---- Fans on hi2c2, ADS 0x49 ---- */
+    ads_read(&hi2c2, i2c2Mutex, 0x49, 0, &fan5raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x49, 1, &fan6raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x49, 2, &fan7raw);
+    ads_read(&hi2c2, i2c2Mutex, 0x49, 3, &fan8raw);
+
+    /* ---- Voltage and temperature (same as before) ---- */
+    ntc_voltage[0] = raw_to_volts(ntc1raw);
+    ntc_voltage[1] = raw_to_volts(ntc2raw);
+    ntc_voltage[2] = raw_to_volts(ntc3raw);
+    ntc_voltage[3] = raw_to_volts(ntc4raw);
+    ntc_voltage[4] = raw_to_volts(ntc5raw);
+    ntc_voltage[5] = raw_to_volts(ntc6raw);
+    ntc_voltage[6] = raw_to_volts(ntc7raw);
+    ntc_voltage[7] = raw_to_volts(ntc8raw);
+
+    for (int i = 0; i < 8; i++)
+    {
+        ntc_temp[i] = volts_to_celsius(ntc_voltage[i]);
+    }
+}
+
+
+
+void SensorTask(void *argument)
+{
+    for (;;)
+    {
+        ReadAllSensors();   /* read all 16 channels + calculate temperatures */
+        osDelay(100);       /* rest 100 ms, then repeat */
+    }
+}
+
 
 static HAL_StatusTypeDef I2C_ProbeAddress(I2C_HandleTypeDef *hi2c, uint8_t addr7)
 {
@@ -398,6 +488,55 @@ int main(void)
   /* Phase 3: WS2812B -- full red (G=0x00, R=0xFF, B=0x00) */
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+
+
+  i2c1Mutex = osMutexNew(&i2c1Mutex_attr);
+  i2c2Mutex = osMutexNew(&i2c2Mutex_attr);
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  const osThreadAttr_t sensorTask_attr = {
+    .name = "sensorTask",
+    .stack_size = 512 * 4,
+    .priority = osPriorityNormal
+  };
+  osThreadNew(SensorTask, NULL, &sensorTask_attr);
+
+
+
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -405,167 +544,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-
-		  uint8_t config[2];
-		     uint8_t rx[2];
-
-		     config[1] = 0x83;   /* 128 SPS, comparator off */
-
-
-
-
-
-		     /* ---- AIN0 ---- */
-		     config[0] = 0xC3;
-		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(20);
-		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc4raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		     /* ---- AIN1 ---- */
-		     config[0] = 0xD3;
-		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(20);
-		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc3raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		     /* ---- AIN2 ---- */
-		     config[0] = 0xE3;
-		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(20);
-		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc2raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		     /* ---- AIN3 ---- */
-		     config[0] = 0xF3;
-		     HAL_I2C_Mem_Write(&hi2c2, (0x4A << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(20);
-		     HAL_I2C_Mem_Read(&hi2c2, (0x4A << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc1raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-
-
-		     /* ---- AIN0 ---- */
-		     config[0] = 0xC3;
-		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(20);
-		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc8raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		     /* ---- AIN1 ---- */
-		     config[0] = 0xD3;
-		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(20);
-		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc7raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		     /* ---- AIN2 ---- */
-		     config[0] = 0xE3;
-		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(20);
-		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc6raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		     /* ---- AIN3 ---- */
-		     config[0] = 0xF3;
-		     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		     HAL_Delay(10);
-		     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		     ntc5raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-
-
-		  ////////////////////////////fan raw read
-		     /* ---- AIN0 ---- */
-		   		     config[0] = 0xC3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(20);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan1raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		   		     /* ---- AIN1 ---- */
-		   		     config[0] = 0xD3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(20);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan2raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		   		     /* ---- AIN2 ---- */
-		   		     config[0] = 0xE3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(20);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan3raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		   		     /* ---- AIN3 ---- */
-		   		     config[0] = 0xF3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(20);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan4raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-
-
-		   		     /* ---- AIN0 ---- */
-		   		     config[0] = 0xC3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x49 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(20);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x49 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan5raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		   		     /* ---- AIN1 ---- */
-		   		     config[0] = 0xD3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x49 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(20);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x49 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan6raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		   		     /* ---- AIN2 ---- */
-		   		     config[0] = 0xE3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x49 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(20);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x49 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan7raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-		   		     /* ---- AIN3 ---- */
-		   		     config[0] = 0xF3;
-		   		     HAL_I2C_Mem_Write(&hi2c2, (0x49<< 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-		   		     HAL_Delay(10);
-		   		     HAL_I2C_Mem_Read(&hi2c2, (0x49 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
-		   		     fan8raw = (int16_t)((rx[0] << 8) | rx[1]);
-
-
-
-
-
-		     ////////////////////////
-
-
-
-
-		     /* ---- Voltage and temperature ---- */
-		     ntc_voltage[0] = raw_to_volts(ntc1raw);
-		     ntc_voltage[1] = raw_to_volts(ntc2raw);
-		     ntc_voltage[2] = raw_to_volts(ntc3raw);
-		     ntc_voltage[3] = raw_to_volts(ntc4raw);
-
-
-		     /* ---- Voltage and temperature ---- */
-		      ntc_voltage[4] = raw_to_volts(ntc5raw);
-		      ntc_voltage[5] = raw_to_volts(ntc6raw);
-		      ntc_voltage[6] = raw_to_volts(ntc7raw);
-		      ntc_voltage[7] = raw_to_volts(ntc8raw);
-
-		      ntc_temp[0] = volts_to_celsius( ntc_voltage[0]);
-		      ntc_temp[1] = volts_to_celsius(ntc_voltage[1]);
-		      ntc_temp[2] = volts_to_celsius(ntc_voltage[2]);
-		      ntc_temp[3] = volts_to_celsius(ntc_voltage[3]);
-		      ntc_temp[4] = volts_to_celsius(ntc_voltage[4]);
-		      ntc_temp[5] = volts_to_celsius(ntc_voltage[5]);
-		      ntc_temp[6] = volts_to_celsius(ntc_voltage[6]);
-		      ntc_temp[7] = volts_to_celsius(ntc_voltage[7]);
-
 
 
 
@@ -638,7 +616,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 400000;
+  hi2c1.Init.ClockSpeed = 100000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -672,7 +650,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.ClockSpeed = 400000;
+  hi2c2.Init.ClockSpeed = 100000;
   hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -1013,6 +991,46 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
 
 /* USART2 is used for Modbus in this project -- no printf retarget. */
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM4 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM4)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
