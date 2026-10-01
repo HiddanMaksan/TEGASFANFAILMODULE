@@ -450,7 +450,7 @@ int main(void)
     /* ---- AIN3 ---- */
     config[0] = 0xF3;
     HAL_I2C_Mem_Write(&hi2c1, (0x48 << 1), 0x01, I2C_MEMADD_SIZE_8BIT, config, 2, 100);
-    HAL_Delay(20);
+    HAL_Delay(10);
     HAL_I2C_Mem_Read(&hi2c1, (0x48 << 1), 0x00, I2C_MEMADD_SIZE_8BIT, rx, 2, 100);
     g_raw7 = (int16_t)((rx[0] << 8) | rx[1]);
 
